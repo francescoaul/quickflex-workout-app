@@ -10,7 +10,7 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
-import LinearProgress from "@mui/joy/LinearProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import { LineChart } from "@mui/x-charts/LineChart";
 import DonutChart from "./DonutChart";
 
@@ -330,21 +330,22 @@ export default function AnalyticsCard({ workouts = [] }) {
 
           {["Cardio", "Strength", "Flexibility"].map((label, i) => {
             const colors = ["#A075FF", "#FF914D", "#3DCF91"];
-            const muiColor = ["primary", "warning", "success"];
+        
             return (
               <Box key={label} sx={{ mb: 2 }}>
                 <Typography sx={{ mb: 0.5, color: colors[i] }}>{label}</Typography>
-                <LinearProgress
-                  determinate
-                  value={typePct[i] || 0}
-                  variant="soft"
-                  color={muiColor[i]}
-                  sx={{
-                    "--LinearProgress-radius": "10px",
-                    "--LinearProgress-thickness": "10px",
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                  }}
-                />
+           <LinearProgress
+              variant="determinate"
+              value={typePct[i] || 0}
+              color={["primary", "warning", "success"][i]}
+              sx={{
+                height: 10,
+                borderRadius: 10,
+                backgroundColor: "rgba(255,255,255,0.08)",
+                "& .MuiLinearProgress-bar": { borderRadius: 10 },
+              }}
+            />
+
               </Box>
             );
           })}

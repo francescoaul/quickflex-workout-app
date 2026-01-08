@@ -14,11 +14,27 @@ import logo from "../assets/logo.svg";
 
 const SETTINGS = ["Profile", "Account", "Logout"];
 
-export default function TopBar() {
+export default function TopBar({ onLogout }) {
   const [anchorElUser, setAnchorElUser] = React.useState(null);
 
   const openUserMenu = (e) => setAnchorElUser(e.currentTarget);
   const closeUserMenu = () => setAnchorElUser(null);
+
+  const handleLogout = async () => {
+    closeUserMenu();
+
+    try {
+      await fetch('http://localhost:3000/auth/logout', {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Logout request failed:", err)
+    }
+
+    localStorage.removeItem("accessToken");
+    onLogout?.();
+  }
 
   return (
     <AppBar
@@ -123,7 +139,7 @@ export default function TopBar() {
               onClose={closeUserMenu}
             >
               {SETTINGS.map((setting) => (
-                <MenuItem key={setting} onClick={closeUserMenu}>
+                <MenuItem key={setting} onClick={setting === "Logout" ? handleLogout : closeUserMenu}>
                   <Typography sx={{ textAlign: "center" }}>{setting}</Typography>
                 </MenuItem>
               ))}

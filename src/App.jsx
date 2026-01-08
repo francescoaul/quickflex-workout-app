@@ -22,12 +22,14 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
+
 import SearchBar from "./components/SearchBar.jsx";
 import AnalyticsCard from "./components/AnalyticsCard";
 import NavBar from "./components/NavBar";
 import AddWorkout from "./components/AddWorkout";
 import SearchAndFilter from "./pages/SearchAndFilter.jsx";
 import TopBar from "./components/TopBar";
+import LoginCard from "./components/LoginCard.jsx";
 
 const CARD_WIDTH = 360;
 
@@ -48,6 +50,71 @@ const editCardStyle = {
   overflow: "hidden",
   outline: "none",
 };
+
+const API_BASE = "http://localhost:3000";
+
+async function apiFetch(path, { token, retry = true, ...options } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: "include", // IMPORTANT so refresh cookie works
+  });
+
+  // If access token expired, try refresh once
+  if (res.status === 401 && retry) {
+    const r = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+
+    if (r.ok) {
+      const data = await r.json().catch(() => ({}));
+      const newToken = data.token;
+      if (newToken) localStorage.setItem("accessToken", newToken);
+
+      // retry original request with new token
+      return apiFetch(path, { token: newToken, retry: false, ...options });
+    }
+  }
+
+  return res;
+}
+
+// DB → UI mapper (keep your UI unchanged)
+function mapWorkoutFromDb(row) {
+  return {
+    id: row.id,
+    name: row.exercise_name,
+    type: row.exercise_type
+      ? row.exercise_type.charAt(0).toUpperCase() + row.exercise_type.slice(1)
+      : "",
+    exercise: row.exercise_key,
+    sets: row.sets,
+    reps: row.reps,
+    createdAtTs: row.performed_at
+  ? new Date(row.performed_at).getTime()
+  : row.created_at
+    ? new Date(row.created_at).getTime()
+    : Date.now(),
+
+    favorite: !!row.is_favorite,
+  };
+}
+
+// UI → DB payload mapper
+function mapWorkoutToDbPayload(w) {
+  return {
+    exerciseName: w.name,
+    exerciseType: w.type, // backend lowercases it
+    exerciseKey: w.exercise,
+    sets: w.sets,
+    reps: w.reps,
+    performedAt: null,
+  };
+}
 
 // --- WorkoutCard component ---
 function WorkoutCard({ workout, onToggleFavorite, onDelete, onStartEdit }) {
@@ -73,14 +140,7 @@ function WorkoutCard({ workout, onToggleFavorite, onDelete, onStartEdit }) {
     >
       <CardContent>
         {/* Top row */}
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            mb: 1,
-          }}
-        >
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
           <Typography
             variant="h5"
             sx={{
@@ -108,7 +168,7 @@ function WorkoutCard({ workout, onToggleFavorite, onDelete, onStartEdit }) {
             whiteSpace: "nowrap",
           }}
         >
-          {(type && exercise) ? `${type} • ${exercise}` : type || exercise || ""}
+          {type && exercise ? `${type} • ${exercise}` : type || exercise || ""}
         </Typography>
 
         {/* Time + Reps */}
@@ -176,6 +236,8 @@ function WorkoutCard({ workout, onToggleFavorite, onDelete, onStartEdit }) {
 
 // --- App component ---
 export default function App() {
+  const [token, setToken] = React.useState(() => localStorage.getItem("accessToken") || "");
+
   const [tab, setTab] = React.useState(3);
 
   // Add form state
@@ -188,25 +250,8 @@ export default function App() {
   // Search (inline)
   const [search, setSearch] = React.useState("");
 
-  // Data (StrictMode-safe: hydrate from localStorage lazily)
-  const [workouts, setWorkouts] = React.useState(() => {
-    try {
-      const stored = localStorage.getItem("fittrack:workouts");
-      const parsed = stored ? JSON.parse(stored) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Save to localStorage whenever workouts change
-  React.useEffect(() => {
-    try {
-      localStorage.setItem("fittrack:workouts", JSON.stringify(workouts));
-    } catch (err) {
-      console.error("Error saving workouts to localStorage:", err);
-    }
-  }, [workouts]);
+  // Data (FROM API)
+  const [workouts, setWorkouts] = React.useState([]);
 
   // Edit modal
   const [editOpen, setEditOpen] = React.useState(false);
@@ -215,15 +260,45 @@ export default function App() {
   // Advanced filters modal
   const [searchOpen, setSearchOpen] = React.useState(false);
 
+  // ✅ ALWAYS call hooks. Just bail out inside the effect when not logged in.
+  React.useEffect(() => {
+    if (!token) return; // <— important: no early return from component, only from effect
+
+    let cancelled = false;
+
+    (async () => {
+      const res = await apiFetch("/workouts", { token });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error("Fetch workouts failed:", data);
+
+        if (res.status === 401) {
+          localStorage.removeItem("accessToken");
+          if (!cancelled) setToken("");
+        }
+        return;
+      }
+
+      const rows = Array.isArray(data.workouts) ? data.workouts : [];
+      const mapped = rows.map(mapWorkoutFromDb);
+
+      if (!cancelled) setWorkouts(mapped);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   // Visible items using only search
   const visibleWorkouts = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = workouts;
+    const list = workouts;
 
     if (!q) return list;
-    if (q.length === 1) {
-      return list.filter((w) => (w.name || "").toLowerCase().startsWith(q));
-    }
+    if (q.length === 1) return list.filter((w) => (w.name || "").toLowerCase().startsWith(q));
+
     return list.filter(
       (w) =>
         (w.name || "").toLowerCase().includes(q) ||
@@ -232,73 +307,140 @@ export default function App() {
     );
   }, [workouts, search]);
 
+  const visibleFavorites = React.useMemo(() => visibleWorkouts.filter((w) => w.favorite), [visibleWorkouts]);
+
   // Handlers
-  const openEditFor = (w) => { setTempEdit({ ...w }); setEditOpen(true); };
-  const closeEdit = () => { setEditOpen(false); setTempEdit(null); };
-  const saveEdit = () => {
-    if (!tempEdit) return;
-    setWorkouts((prev) => prev.map((w) => (w.id === tempEdit.id ? { ...w, ...tempEdit } : w)));
+  const openEditFor = (w) => {
+    setTempEdit({ ...w });
+    setEditOpen(true);
+  };
+  const closeEdit = () => {
+    setEditOpen(false);
+    setTempEdit(null);
+  };
+
+  const addWorkout = async () => {
+    if (!name.trim() || !type.trim() || !exercise.trim()) return;
+    if (!token) return;
+
+    const payload = mapWorkoutToDbPayload({ name, type, exercise, sets, reps });
+
+    const res = await apiFetch("/workouts", {
+      token,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("Add workout failed:", data);
+      return;
+    }
+
+    const created = mapWorkoutFromDb(data);
+    setWorkouts((prev) => [created, ...prev]);
+
+    setName("");
+    setType("");
+    setExercise("");
+    setSets(1);
+    setReps(1);
+  };
+
+  const toggleFavorite = async (id) => {
+    if (!token) return;
+
+    const current = workouts.find((w) => w.id === id);
+    if (!current) return;
+
+    const nextValue = !current.favorite;
+
+    // optimistic
+    setWorkouts((prev) => prev.map((w) => (w.id === id ? { ...w, favorite: nextValue } : w)));
+
+    const res = await apiFetch(`/workouts/${id}/favorite`, {
+      token,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isFavorite: nextValue }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("Favorite update failed:", data);
+      // rollback
+      setWorkouts((prev) => prev.map((w) => (w.id === id ? { ...w, favorite: !nextValue } : w)));
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!tempEdit || !token) return;
+
+    const res = await apiFetch(`/workouts/${tempEdit.id}`, {
+      token,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exerciseName: tempEdit.name,
+        exerciseType: tempEdit.type,
+        exerciseKey: tempEdit.exercise,
+        sets: tempEdit.sets,
+        reps: tempEdit.reps,
+        performedAt: null,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("Edit failed:", data);
+      return;
+    }
+
+    const updated = mapWorkoutFromDb(data);
+    setWorkouts((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+
     closeEdit();
   };
 
-  const addWorkout = () => {
-    if (!name.trim() || !type.trim() || !exercise.trim()) return;
-    const now = new Date();
-    setWorkouts((prev) => [
-      {
-        id: Date.now(),
-        name,
-        type,
-        exercise,
-        sets,
-        reps,
-        createdAtTs: now.getTime(),
-        favorite: false,
-      },
-      ...prev,
-    ]);
-    setName(""); setType(""); setExercise(""); setSets(1); setReps(1);
-  };
+  const deleteWorkout = async (id) => {
+    if (!token) return;
 
-  const toggleFavorite = (id) =>
-    setWorkouts((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, favorite: !w.favorite } : w))
-    );
+    const snapshot = workouts;
 
-  const deleteWorkout = (id) => {
+    // optimistic remove
     setWorkouts((prev) => prev.filter((w) => w.id !== id));
     if (tempEdit?.id === id) closeEdit();
+
+    const res = await apiFetch(`/workouts/${id}`, { token, method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("Delete failed:", data);
+      // rollback
+      setWorkouts(snapshot);
+    }
   };
 
   // Views
   const WorkoutsView = (
     <Box sx={{ color: "#A0A4AE", width: "100%", maxWidth: 960 }}>
-      {/* Header column (kept aligned to card width) */}
       <Box sx={{ width: CARD_WIDTH, mx: "auto", mb: 2 }}>
         <Typography variant="h6" sx={{ color: "#fff", fontWeight: 600, mb: 1 }}>
           Workouts
         </Typography>
 
-        {/* Search + Filters Icon */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <Box sx={{ flex: 1 }}>
-            <SearchBar
-              placeholder="Search workouts..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <SearchBar placeholder="Search workouts..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </Box>
 
-          {/* Open Advanced Filters (icon button) */}
           <IconButton
             onClick={() => setSearchOpen(true)}
             sx={{
               color: "rgba(255,255,255,0.8)",
               transition: "all 0.25s ease",
-              "&:hover": {
-                color: "#A075FF",
-                transform: "rotate(10deg)",
-              },
+              "&:hover": { color: "#A075FF", transform: "rotate(10deg)" },
             }}
             aria-label="Open filters"
           >
@@ -308,18 +450,12 @@ export default function App() {
 
         <Typography
           variant="caption"
-          sx={{
-            color: "rgba(255,255,255,0.6)",
-            display: "block",
-            textAlign: "center",
-            mt: 1,
-          }}
+          sx={{ color: "rgba(255,255,255,0.6)", display: "block", textAlign: "center", mt: 1 }}
         >
           Showing {visibleWorkouts.length} of {workouts.length}
         </Typography>
       </Box>
 
-      {/* Cards (aligned to same width) */}
       <Box sx={{ width: CARD_WIDTH, mx: "auto", mt: 2 }}>
         <Box sx={{ display: "grid", gap: 1.5, justifyItems: "center" }}>
           {visibleWorkouts.length === 0 ? (
@@ -342,14 +478,11 @@ export default function App() {
     </Box>
   );
 
-  const visibleFavorites = React.useMemo(
-    () => visibleWorkouts.filter((w) => w.favorite),
-    [visibleWorkouts]
-  );
-
   const FavoritesView = (
     <Box sx={{ color: "#A0A4AE", textAlign: "center", width: "100%" }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>Favorites</Typography>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Favorites
+      </Typography>
       {visibleFavorites.length === 0 ? (
         <Typography>No favorites yet.</Typography>
       ) : (
@@ -373,11 +506,16 @@ export default function App() {
       case 0:
         return (
           <AddWorkout
-            name={name} setName={setName}
-            type={type} setType={setType}
-            exercise={exercise} setExercise={setExercise}
-            sets={sets} setSets={setSets}
-            reps={reps} setReps={setReps}
+            name={name}
+            setName={setName}
+            type={type}
+            setType={setType}
+            exercise={exercise}
+            setExercise={setExercise}
+            sets={sets}
+            setSets={setSets}
+            reps={reps}
+            setReps={setReps}
             addWorkout={addWorkout}
           />
         );
@@ -394,9 +532,31 @@ export default function App() {
   const setOptions = Array.from({ length: 12 }, (_, i) => i + 1);
   const repOptions = Array.from({ length: 30 }, (_, i) => i + 1);
 
+  // ✅ Login screen is rendered *inside* return (no hook rule violations)
+  if (!token) {
+    return (
+      <LoginCard
+        onSuccess={(payload) => {
+          // support either shape: {token} or {accessToken} or nested
+          const t = payload?.token || payload?.accessToken || payload?.user?.token || "";
+          if (!t) {
+            // If your backend only uses cookies (no access token in JSON),
+            // you can call refresh here to obtain one, but we won't change LoginCard.
+            console.warn("Login success but no token returned. Ensure /auth/login returns { token }.");
+            return;
+          }
+          localStorage.setItem("accessToken", t);
+          setToken(t);
+        }}
+      />
+    );
+  }
+
   return (
     <>
-      <TopBar />
+      <TopBar 
+        onLogout={() => { localStorage.removeItem("accessToken"); setToken("");}}
+      />
 
       <Box
         sx={{
@@ -449,9 +609,7 @@ export default function App() {
           <TextField
             label="Exercise"
             value={tempEdit?.exercise ?? ""}
-            onChange={(e) =>
-              setTempEdit({ ...tempEdit, exercise: e.target.value })
-            }
+            onChange={(e) => setTempEdit({ ...tempEdit, exercise: e.target.value })}
             fullWidth
             margin="normal"
             InputLabelProps={{ style: { color: "rgba(255,255,255,0.7)" } }}
@@ -472,14 +630,8 @@ export default function App() {
               <Select
                 labelId="sets-label"
                 value={tempEdit?.sets ?? 1}
-                onChange={(e) =>
-                  setTempEdit({ ...tempEdit, sets: Number(e.target.value) })
-                }
-                sx={{
-                  color: "#fff",
-                  backgroundColor: "#2A2C30",
-                  borderRadius: 6,
-                }}
+                onChange={(e) => setTempEdit({ ...tempEdit, sets: Number(e.target.value) })}
+                sx={{ color: "#fff", backgroundColor: "#2A2C30", borderRadius: 6 }}
               >
                 {setOptions.map((n) => (
                   <MenuItem key={n} value={n}>
@@ -496,14 +648,8 @@ export default function App() {
               <Select
                 labelId="reps-label"
                 value={tempEdit?.reps ?? 1}
-                onChange={(e) =>
-                  setTempEdit({ ...tempEdit, reps: Number(e.target.value) })
-                }
-                sx={{
-                  color: "#fff",
-                  backgroundColor: "#2A2C30",
-                  borderRadius: 6,
-                }}
+                onChange={(e) => setTempEdit({ ...tempEdit, reps: Number(e.target.value) })}
+                sx={{ color: "#fff", backgroundColor: "#2A2C30", borderRadius: 6 }}
               >
                 {repOptions.map((n) => (
                   <MenuItem key={n} value={n}>
@@ -515,11 +661,7 @@ export default function App() {
           </Box>
 
           <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3, gap: 1 }}>
-            <Button
-              onClick={closeEdit}
-              variant="text"
-              sx={{ color: "rgba(255,255,255,0.8)" }}
-            >
+            <Button onClick={closeEdit} variant="text" sx={{ color: "rgba(255,255,255,0.8)" }}>
               Cancel
             </Button>
             <Button
@@ -539,15 +681,7 @@ export default function App() {
 
       {/* Advanced Search & Filter (full screen) */}
       <Modal open={searchOpen} onClose={() => setSearchOpen(false)}>
-        <Box
-          sx={{
-            position: "fixed",
-            inset: 0,
-            bgcolor: "black",
-            overflow: "auto",
-            outline: "none",
-          }}
-        >
+        <Box sx={{ position: "fixed", inset: 0, bgcolor: "black", overflow: "auto", outline: "none" }}>
           <SearchAndFilter
             workouts={workouts}
             onClose={() => setSearchOpen(false)}
