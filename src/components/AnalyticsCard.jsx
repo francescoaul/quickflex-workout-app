@@ -321,12 +321,7 @@ export default function AnalyticsCard({ workouts = [] }) {
           </Box>
 
           {/* === Progress Bars === */}
-          <Typography
-            variant="subtitle2"
-            sx={{ color: "rgba(255,255,255,0.6)", mb: 2 }}
-          >
-            Breakdown by type
-          </Typography>
+
 
           {["Cardio", "Strength", "Flexibility"].map((label, i) => {
             const colors = ["#A075FF", "#FF914D", "#3DCF91"];

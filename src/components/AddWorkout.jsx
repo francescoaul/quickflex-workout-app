@@ -19,6 +19,12 @@ import Picker from "react-mobile-picker";
 
 const TYPE_OPTIONS = ["Cardio", "Strength", "Flexibility", "Balance"];
 
+const WEIGHT_OPTIONS = [
+  ...Array.from({ length: 20 }, (_, i) => (i + 1) * 5), // 5–100
+  ...Array.from({ length: 16 }, (_, i) => 105 + i * 5), // 105–180
+  185, 190, 195, 200, 205, 210, 220, 225, 230, 235, 240, 245, 250,
+];
+
 const EXERCISE_OPTIONS = [
   // --- Compound Strength ---
   "Squats",
@@ -252,6 +258,8 @@ export default function AddWorkout({
   setSets,
   reps,
   setReps,
+  weight,
+  setWeight,
   addWorkout,
 }) {
   const isSmall = useMediaQuery("(max-width:560px)");
@@ -335,6 +343,7 @@ export default function AddWorkout({
               ))}
             </Select>
           </FormControl>
+          
 
           {/* Exercise (Autocomplete) */}
           <Autocomplete
@@ -383,6 +392,49 @@ export default function AddWorkout({
               />
             )}
           />
+
+       {/* Weight */}
+          <FormControl
+            sx={{
+              minWidth: 200,
+              "& .MuiOutlinedInput-root": { borderRadius: "20px" },
+              "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.6)" },
+              "& .MuiInputLabel-root.Mui-focused": { color: "#A075FF" },
+              "& .MuiOutlinedInput-notchedOutline": {
+                borderColor: "rgba(255,255,255,0.25)",
+              },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#EAEAEA" },
+              "& .MuiSelect-select": {
+                color: "#EAEAEA",
+                backgroundColor: "#1A1C1F",
+                borderRadius: "8px",
+              },
+              "& .MuiSvgIcon-root": { color: "rgba(255,255,255,0.8)" },
+              "&:hover .MuiSvgIcon-root, &.Mui-focused .MuiSvgIcon-root": {
+                color: "#A075FF",
+              },
+            }}
+          >
+            <InputLabel id="weight-label">Weight</InputLabel>
+            <Select
+              labelId="weight-label"
+              label="Weight"
+              value={weight}
+              onChange={(e) => setWeight(Number(e.target.value))}
+              MenuProps={DARK_MENU_PROPS}
+            >
+              <MenuItem value="" diabled>
+                  Weight
+              </MenuItem>
+
+              {WEIGHT_OPTIONS.map((w) => (
+                <MenuItem key={w} value={w}>
+                  {w} lb
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
         </Box>
 
         {/* NEW: Wheel pickers for sets & reps */}

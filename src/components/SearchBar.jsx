@@ -4,7 +4,7 @@ import Box from "@mui/material/Box";
 import InputBase from "@mui/material/InputBase";
 import SearchIcon from "@mui/icons-material/Search";
 
-const PLACEHOLDER = "rgba(255,255,255,0.55)"; // lighter grey for dark background
+const PLACEHOLDER = "rgba(255,255,255,0.55)"; 
 
 export default function SearchBar({
   placeholder = "Search…",
@@ -23,7 +23,7 @@ export default function SearchBar({
         position: "relative",
         width: "100%",
         borderRadius: 2,
-        bgcolor: "#1A1C1F", // dark background to match app
+        bgcolor: "#1A1C1F",
         border: "1px solid rgba(255,255,255,0.15)",
         transition: "background-color .2s ease, border-color .2s ease",
         "&:hover": {

@@ -246,6 +246,7 @@ export default function App() {
   const [exercise, setExercise] = React.useState("");
   const [sets, setSets] = React.useState(1);
   const [reps, setReps] = React.useState(1);
+  const [weight, setWeight] = React.useState("");
 
   // Search (inline)
   const [search, setSearch] = React.useState("");
@@ -260,7 +261,7 @@ export default function App() {
   // Advanced filters modal
   const [searchOpen, setSearchOpen] = React.useState(false);
 
-  // ✅ ALWAYS call hooks. Just bail out inside the effect when not logged in.
+  // ALWAYS call hooks. Just bail out inside the effect when not logged in.
   React.useEffect(() => {
     if (!token) return; // <— important: no early return from component, only from effect
 
@@ -346,6 +347,7 @@ export default function App() {
     setExercise("");
     setSets(1);
     setReps(1);
+    setWeight(0);
   };
 
   const toggleFavorite = async (id) => {
@@ -516,6 +518,8 @@ export default function App() {
             setSets={setSets}
             reps={reps}
             setReps={setReps}
+            weight={weight}
+            setWeight={setWeight}
             addWorkout={addWorkout}
           />
         );
@@ -532,7 +536,6 @@ export default function App() {
   const setOptions = Array.from({ length: 12 }, (_, i) => i + 1);
   const repOptions = Array.from({ length: 30 }, (_, i) => i + 1);
 
-  // ✅ Login screen is rendered *inside* return (no hook rule violations)
   if (!token) {
     return (
       <LoginCard
@@ -540,7 +543,7 @@ export default function App() {
           // support either shape: {token} or {accessToken} or nested
           const t = payload?.token || payload?.accessToken || payload?.user?.token || "";
           if (!t) {
-            // If your backend only uses cookies (no access token in JSON),
+            // If backend only uses cookies (no access token in JSON),
             // you can call refresh here to obtain one, but we won't change LoginCard.
             console.warn("Login success but no token returned. Ensure /auth/login returns { token }.");
             return;
@@ -555,7 +558,7 @@ export default function App() {
   return (
     <>
       <TopBar 
-        onLogout={() => { localStorage.removeItem("accessToken"); setToken("");}}
+        onLogout={() => { localStorage.removeItem("accessToken"); setToken("");}} // avoid storing locally due to xss threat..
       />
 
       <Box

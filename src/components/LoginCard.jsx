@@ -69,8 +69,7 @@ export default function LoginCard({ onSuccess }) {
         setMessage("Account created. Please log in.");
         return;
       }
-
-      // ✅ login success: cookies set by server
+      
      //  const user = data?.user || null;
       onSuccess?.(data);
 

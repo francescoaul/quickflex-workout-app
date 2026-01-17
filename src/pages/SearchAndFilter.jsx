@@ -56,7 +56,7 @@ function filterWorkouts(data, { query, groups, types, durations, difficulties })
   });
 }
 
-/** ----------------- Image sources (fallback) ----------------- **/
+/**Image sources (fallback) **/
 const IMG = {
   "weighted exercise": "https://images.unsplash.com/photo-1558611848-73f7eb4001a1",
   bodyweight: "https://images.unsplash.com/photo-1518611012118-696072aa579a",
