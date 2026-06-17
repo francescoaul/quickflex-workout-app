@@ -9,7 +9,7 @@ import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import logo from "../assets/logo.svg";
 
-const API_BASE = "http://localhost:3000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 export default function LoginCard({ onSuccess }) {
   const [mode, setMode] = React.useState("login");
